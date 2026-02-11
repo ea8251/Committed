@@ -1,0 +1,50 @@
+Flow: 
+    Ollama llm -> 
+    
+    Model using Zero-Shot-classification to classify diff as... 
+
+        - Contains a fully implemented feature
+        - Does not
+
+    -----------------------------------------------------------
+
+        - Contains a fully implemented bug fix
+        - Does not
+
+    -----------------------------------------------------------
+
+        - Contains a fully implemented refactor
+        - Does not
+    ->
+
+    User is notified of a possible full implemented ->
+
+    User approves or rejects the existance of each of the classifications ->
+
+    Model loops through each hunk from git add -p and using Zero-Shot-classification it classifies the hunk as... 
+
+        - Part of the commit
+        - Not part of the commit    
+
+
+Model Options:
+1. LLM
+    Pros:
+    - No training needed
+    - Likely better classification abilities
+    
+    Cons:
+    - Limited fine-tuning potential
+
+    Notes: 
+    - We might not be able to fine tune the model itself, but we could fine tune the confidence tresholds for 
+    each of the categories (fully implemented feature, bug fix, or refactor) when determining whether or not
+    one of the categories exist in the diff
+
+2. PL-NL Model (Like CodeBERT):
+    Pros:
+    - Finetune each model specific to the user (based on if they accept or reject the ai output)
+    
+    Cons:
+    - Needs to be trained (thus we would need a lot of training data)
+    - Probably not great at classifications
