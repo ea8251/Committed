@@ -26,6 +26,15 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
         cache-dependency-path: committed/package-lock.json
-    - run: npm ci
-    - run: npm run compile --if-present
-    - run: npm test
+
+    - name: Install dependencies
+      working-directory: committed
+      run: npm ci
+
+    - name: Compile
+      working-directory: committed
+      run: npm run compile --if-present
+
+    - name: Run tests
+      working-directory: committed
+      run: npm test
