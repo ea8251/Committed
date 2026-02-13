@@ -25,7 +25,7 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-    - run: cd committed
+        cache-dependency-path: committed/package-lock.json
     - run: npm ci
     - run: npm run compile --if-present
     - run: npm test
