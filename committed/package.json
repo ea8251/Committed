@@ -9,15 +9,54 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:committed.suggestions",
+    "onCommand:committed.generateSuggestions"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "committed.helloWorld",
-        "title": "Hello World"
+        "command": "committed.generateSuggestions",
+        "title": "Committed: Generate Suggestions",
+        "icon": "$(refresh)"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "committed",
+          "title": "Committed",
+          "icon": "resources/committed.svg"
+        }
+      ]
+    },
+    "views": {
+      "committed": [
+        {
+          "id": "committed.suggestions",
+          "name": "Committed",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "committed.generateSuggestions",
+          "when": "view == committed.suggestions",
+          "group": "navigation"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "committed.generateSuggestions",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
