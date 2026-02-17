@@ -1,0 +1,1 @@
+Instructions for the Ollama Model

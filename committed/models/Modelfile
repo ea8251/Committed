@@ -1,0 +1,27 @@
+FROM deepseek-coder
+
+# 1. Kill creativity
+PARAMETER temperature 0
+
+# 2. Control output length and stop at newline after JSON
+PARAMETER num_predict 150
+PARAMETER stop "\n"
+
+# 3. System Prompt (The "Anti-Linter" Rules)
+SYSTEM """
+You are a classifier that categorizes code changes into predefined categories based on the diff provided. The categories are: "Full Feature", "Bug Fix", and "Refactor".
+The description is of what changed and why, in a short summary. Do not include any code in the description, just a brief explanation of the change.
+
+RESPOND WITH THIS JSON STRUCTURE ONLY:
+{"category": "CATEGORY_HERE", "description": "SHORT_SUMMARY"}
+"""
+
+# 4. The Template (The Fix)
+TEMPLATE """{{ .System }}
+
+Diff:
+```diff
+{{ .Prompt }}
+```
+
+JSON:"""
