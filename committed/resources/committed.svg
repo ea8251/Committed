@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="433.3333333333333" height="433.3333333333333" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <title>Green Circle Letters C</title>
+ <defs>
+  <linearGradient id="linearGradient1702">
+   <stop stop-color="#ffffff" stop-opacity="0.690722" offset="0" id="stop1703"/>
+   <stop stop-color="#ffffff" stop-opacity="0" offset="1" id="stop1704"/>
+  </linearGradient>
+  <linearGradient id="linearGradient1697">
+   <stop stop-color="#69db0e" offset="0" id="stop1698"/>
+   <stop stop-color="#397607" offset="1" id="stop1699"/>
+  </linearGradient>
+  <linearGradient y2="0.000028" y1="0.962463" xlink:href="#linearGradient1697" x2="0.434766" x1="0.434766" id="linearGradient1076"/>
+  <linearGradient y2="0.933531" y1="0.077503" xlink:href="#linearGradient1697" x2="0.491787" x1="0.491787" id="linearGradient1077"/>
+  <linearGradient y2="1.321187" y1="-0.037698" xlink:href="#linearGradient1702" x2="0.482606" x1="0.478623" id="linearGradient1078"/>
+ </defs>
+ <g>
+  <title>Layer 1</title>
+  <g id="layer1">
+   <g id="g1073">
+    <path fill="url(#linearGradient1076)" fill-rule="nonzero" stroke="url(#linearGradient1077)" stroke-width="1.364453" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" stroke-dashoffset="0" id="path1070" d="m393.36496,203.3954a190.40367,190.40367 0 1 1 -380.80765,0a190.40367,190.40367 0 1 1 380.80765,0z"/>
+    <path opacity="0.9" fill="url(#linearGradient1078)" fill-rule="evenodd" stroke-width="0.25000000pt" id="path1713" d="m341.27789,153.23675c44.36719,-0.96679 -12.40014,-123.15287 -135.68101,-123.80278c-134.56153,-0.68712 -162.09595,110.96135 -140.71945,112.99721c0,0 36.86416,5.06262 71.93957,14.85608c56.47266,15.93082 125.54915,-13.06924 152.76876,-17.2836c30.34246,-4.69788 47.37341,15.39243 51.69213,13.23309z"/>
+   </g>
+  </g>
+  <text style="cursor: move;" transform="matrix(6.7433,0,0,6.51416,-1448.07,-1544.82) " xml:space="preserve" text-anchor="middle" font-family="Arial" font-size="50" id="svg_1" y="285.276119" x="245.408276" stroke-width="0" stroke="#ffffff" fill="#ffffff">C</text>
+  <ellipse fill="#ffffff" stroke="#ffffff" stroke-width="5" cx="258.666687" cy="215.666656" id="svg_2" rx="1"/>
+ </g>
+</svg>
