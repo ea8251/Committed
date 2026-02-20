@@ -11,13 +11,13 @@ export type ClassifierResult = z.infer<typeof ClassifierSchema>;
 
 // removing line numbers and other white space in the gitdiff before sending to the LLM
 export function preprocessDiff(rawDiff: string): string {
-  if (!rawDiff || rawDiff.trim() === "") return "";
+  if (!rawDiff || rawDiff.trim() === "") {return "";}
 
   const lines = rawDiff.split("\n");
   const cleanedLines: string[] = [];
 
   for (const line of lines) {
-    if (line.startsWith("index ")) continue;
+    if (line.startsWith("index ")) {continue;}
     
     if (line.startsWith("GIT binary patch") || line.includes("Binary files")) {
       return "[BINARY FILE CHANGES OMITTED]";
