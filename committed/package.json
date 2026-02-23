@@ -78,6 +78,7 @@
   },
   "dependencies": {
     "ollama": "^0.6.3",
+    "simple-git": "^3.32.2",
     "zod": "^4.3.6"
   }
 }
