@@ -68,42 +68,42 @@ function classificationGuidance(classification: HunkClassification): string {
     case "bug fix":
       return `A bug fix corrects BROKEN or INCORRECT behavior. The code was producing WRONG results or FAILING.
 
-Signs a hunk is part of a bug fix:
-- Off-by-one corrections, null/undefined safety additions
-- Wrong operator fixes ("=" → "==="), boundary condition corrections
-- Error handling additions that fix crashes
-- Small targeted changes that correct specific misbehavior
+              Signs a hunk is part of a bug fix:
+              - Off-by-one corrections, null/undefined safety additions
+              - Wrong operator fixes ("=" → "==="), boundary condition corrections
+              - Error handling additions that fix crashes
+              - Small targeted changes that correct specific misbehavior
 
-Signs a hunk is NOT part of a bug fix:
-- Adding entirely new functions or capabilities (that's a feature)
-- Restructuring working code without fixing broken behavior (that's a refactor)`;
+              Signs a hunk is NOT part of a bug fix:
+              - Adding entirely new functions or capabilities (that's a feature)
+              - Restructuring working code without fixing broken behavior (that's a refactor)`;
 
     case "feature":
       return `A feature adds NEW functionality. The codebase can do something it COULD NOT do before.
 
-Signs a hunk is part of a feature:
-- New functions, methods, classes, or exports
-- New parameters, routes, or UI elements
-- New imports required to support new capabilities
-- Test code covering new behavior
+              Signs a hunk is part of a feature:
+              - New functions, methods, classes, or exports
+              - New parameters, routes, or UI elements
+              - New imports required to support new capabilities
+              - Test code covering new behavior
 
-Signs a hunk is NOT part of a feature:
-- Fixing broken behavior (that's a bug fix)
-- Reorganizing existing code without adding capabilities (that's a refactor)`;
+              Signs a hunk is NOT part of a feature:
+              - Fixing broken behavior (that's a bug fix)
+              - Reorganizing existing code without adding capabilities (that's a refactor)`;
 
     case "refactor":
       return `A refactor restructures WORKING code without changing observable behavior. Same outputs, different structure.
+              
+              Signs a hunk is part of a refactor:
+              - Renaming variables or functions for clarity
+              - Extracting duplicated code into shared helpers
+              - Converting callbacks to async/await (same behavior)
+              - Removing dead or unused code
+              - Changing file organization or imports without new behavior
 
-Signs a hunk is part of a refactor:
-- Renaming variables or functions for clarity
-- Extracting duplicated code into shared helpers
-- Converting callbacks to async/await (same behavior)
-- Removing dead or unused code
-- Changing file organization or imports without new behavior
-
-Signs a hunk is NOT part of a refactor:
-- Fixing something that was broken (that's a bug fix)
-- Adding new functionality (that's a feature)`;
+              Signs a hunk is NOT part of a refactor:
+              - Fixing something that was broken (that's a bug fix)
+              - Adding new functionality (that's a feature)`;
   }
 }
 
