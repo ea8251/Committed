@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
 import { CommittedViewProvider } from "./ui/CommittedViewProvider";
+import { getGitHubClient, getGitDiff } from "./github";
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -33,6 +34,32 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	// Test command for GitHub and Git diff
+	context.subscriptions.push(
+		vscode.commands.registerCommand("committed.testGitHub", async () => {
+			try {
+				// Test GitHub client
+				const octokit = await getGitHubClient();
+				if (octokit) {
+					const { data: user } = await octokit.users.getAuthenticated();
+					vscode.window.showInformationMessage(`GitHub connected: ${user.login}`);
+				} else {
+					vscode.window.showWarningMessage('Could not connect to GitHub');
+				}
+
+				// Test git diff
+				const diff = await getGitDiff();
+				if (diff) {
+					console.log('Git diff:', diff);
+					vscode.window.showInformationMessage(`Git diff: ${diff.length} characters`);
+				} else {
+					vscode.window.showInformationMessage('No git changes detected');
+				}
+			} catch (error) {
+				vscode.window.showErrorMessage(`Error: ${error}`);
+			}
+		})
+	);
 
 }
 

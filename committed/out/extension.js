@@ -39,6 +39,7 @@ exports.deactivate = deactivate;
 // Import the module and reference it with the alias vscode in your code below
 const vscode = __importStar(require("vscode"));
 const CommittedViewProvider_1 = require("./ui/CommittedViewProvider");
+const github_1 = require("./github");
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 function activate(context) {
@@ -58,6 +59,32 @@ function activate(context) {
     context.subscriptions.push(vscode.window.registerWebviewViewProvider("committed.suggestions", viewProvider));
     context.subscriptions.push(vscode.commands.registerCommand("committed.generateSuggestions", () => {
         viewProvider.generate();
+    }));
+    // Test command for GitHub and Git diff
+    context.subscriptions.push(vscode.commands.registerCommand("committed.testGitHub", async () => {
+        try {
+            // Test GitHub client
+            const octokit = await (0, github_1.getGitHubClient)();
+            if (octokit) {
+                const { data: user } = await octokit.users.getAuthenticated();
+                vscode.window.showInformationMessage(`GitHub connected: ${user.login}`);
+            }
+            else {
+                vscode.window.showWarningMessage('Could not connect to GitHub');
+            }
+            // Test git diff
+            const diff = await (0, github_1.getGitDiff)();
+            if (diff) {
+                console.log('Git diff:', diff);
+                vscode.window.showInformationMessage(`Git diff: ${diff.length} characters`);
+            }
+            else {
+                vscode.window.showInformationMessage('No git changes detected');
+            }
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`Error: ${error}`);
+        }
     }));
 }
 // This method is called when your extension is deactivated
