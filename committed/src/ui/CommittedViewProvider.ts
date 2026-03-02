@@ -1,64 +1,81 @@
 import * as vscode from "vscode";
 
 type FinalClassification = {
-	label: "Bug Fix" | "Feature" | "Refactor" | "Unclear";
-	confidence: number;
-	reasoning?: string;
+  label: "Bug Fix" | "Feature" | "Refactor" | "Unclear";
+  confidence: number;
+  reasoning?: string;
 };
 
 export class CommittedViewProvider implements vscode.WebviewViewProvider {
-	private view?: vscode.WebviewView;
-	private hasGenerated = false;
+  private view?: vscode.WebviewView;
+  private hasGenerated = false;
 
-	private lastClassification?: FinalClassification;
+  private lastClassification?: FinalClassification;
 
-	constructor(private readonly extensionUri: vscode.Uri) { }
+  constructor(private readonly extensionUri: vscode.Uri) { }
 
-	resolveWebviewView(view: vscode.WebviewView) {
-		this.view = view;
+  resolveWebviewView(view: vscode.WebviewView) {
+    this.view = view;
 
-		view.webview.options = {
-			enableScripts: true,
-			localResourceRoots: [this.extensionUri],
-		};
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this.extensionUri],
+    };
 
-		view.webview.onDidReceiveMessage((msg) => {
-			if (msg?.type === "generate") {
-				this.generate();
-			}
-			if (msg?.type === "toggleReasoning") {
-				// purely UI state; no-op server side, render handles checkbox state client-side
-				this.render();
-			}
-		});
+    view.webview.onDidReceiveMessage((msg) => {
+      if (msg?.type === "generate") {
+        this.generate();
+        return;
+      }
 
-		this.render();
-	}
+      // Pass-through events for extension host to handle
+      if (msg?.type === "accept") {
+        // Extension should handle persisting acceptance / next steps
+        return;
+      }
 
-	generate() {
-		this.hasGenerated = true;
-		this.render();
-	}
+      if (msg?.type === "reject") {
+        // Clear UI immediately; extension should mark re-run on next save
+        this.hasGenerated = false;
+        this.lastClassification = undefined;
+        this.render();
+        return;
+      }
 
-	/** Called by extension code when a new classification arrives */
-	public publishClassification(result: FinalClassification) {
-		this.lastClassification = result;
+      if (msg?.type === "toggleReasoning") {
+        // purely UI state; no-op server side, render handles checkbox state client-side
+        this.render();
+      }
+    });
 
-		// If the webview is already loaded, push message (fast)
-		this.view?.webview.postMessage({ type: "classification", payload: result });
+    this.render();
+  }
 
-		// Also re-render so HTML contains latest on initial load / refresh
-		this.render();
-	}
+  generate() {
+    this.hasGenerated = true;
+    this.render();
+  }
 
-	private render() {
-		if (!this.view) return;
+  /** Called by extension code when a new classification arrives */
+  public publishClassification(result: FinalClassification) {
+    this.lastClassification = result;
 
-		const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
+    // If the webview is already loaded, push message (fast)
+    this.view?.webview.postMessage({ type: "classification", payload: result });
 
-		const classification = this.lastClassification;
-		const classificationHtml = classification
-			? `
+    // Also re-render so HTML contains latest on initial load / refresh
+    this.render();
+  }
+
+  private render() {
+    if (!this.view) return;
+
+    const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
+
+    const classification = this.lastClassification;
+
+    const classificationHtml = classification
+      ? `
         <div class="card">
           <div class="row">
             <div class="k">Type:</div>
@@ -80,11 +97,16 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
           </div>
 
           <div class="reasoning" id="reasoning" style="display:none;">${escapeHtml(
-				classification.reasoning ?? "—"
-			)}</div>
+        classification.reasoning ?? "—"
+      )}</div>
+
+          <div class="actions">
+            <button class="btn secondary" id="accept">Accept</button>
+            <button class="btn danger" id="reject">Reject</button>
+          </div>
         </div>
       `
-			: `
+      : `
         <div class="card">
           <div class="row">
             <div class="k">Type:</div>
@@ -97,13 +119,13 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
         </div>
       `;
 
-		const hunkText =
-			"lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
-		const messageText =
-			"ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+    const hunkText =
+      "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
+    const messageText =
+      "ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
 
-		const dataHtml = this.hasGenerated
-			? `
+    const dataHtml = this.hasGenerated
+      ? `
         <div class="card">
           <div class="row">
             <div class="k">Hunk:</div>
@@ -115,9 +137,9 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
           </div>
         </div>
       `
-			: "";
+      : "";
 
-		this.view.webview.html = `<!doctype html>
+    this.view.webview.html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -144,6 +166,17 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-button-background);
     }
     .btn:hover { background: var(--vscode-button-hoverBackground); }
+    .btn.secondary {
+      color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+      background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+    }
+    .btn.secondary:hover {
+      background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
+    }
+    .btn.danger {
+      color: var(--vscode-editor-background);
+      background: var(--vscode-errorForeground);
+    }
     .stack { display: grid; gap: 12px; }
     .card {
       border-radius: var(--radius);
@@ -182,6 +215,13 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
       font-size: 12px;
       opacity: 0.95;
     }
+
+    .actions {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
   </style>
 </head>
 <body>
@@ -201,13 +241,27 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
       vscode.postMessage({ type: "generate" });
     });
 
+    const acceptBtn = document.getElementById("accept");
+    if (acceptBtn) {
+      acceptBtn.addEventListener("click", () => {
+        vscode.postMessage({ type: "accept" });
+      });
+    }
+
+    const rejectBtn = document.getElementById("reject");
+    if (rejectBtn) {
+      rejectBtn.addEventListener("click", () => {
+        vscode.postMessage({ type: "reject" });
+      });
+    }
+
     // Live updates from extension
     window.addEventListener("message", (event) => {
       const msg = event.data;
       if (!msg || msg.type !== "classification") return;
 
-      // Simple approach: re-render server-side already updated the HTML.
-      // But if you want to update in-place, you can do it here.
+      // Simple approach: extension side re-renders with updated HTML already.
+      // If you want to update in-place, do it here.
     });
 
     // Reasoning toggle (only if it exists in DOM)
@@ -221,14 +275,14 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
   </script>
 </body>
 </html>`;
-	}
+  }
 }
 
 function escapeHtml(input: string) {
-	return input
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;")
-		.replaceAll('"', "&quot;")
-		.replaceAll("'", "&#039;");
+  return input
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
