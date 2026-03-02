@@ -35,8 +35,37 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = __importStar(require("assert"));
 const classifyDiff_1 = require("../models/classifyDiff");
+/**
+ * Creates a mock Ollama client that returns a predetermined JSON response
+ * from its `generate` method, avoiding real network calls in CI.
+ */
+function createMockOllama(response) {
+    return {
+        generate: async () => ({
+            response: JSON.stringify(response),
+            model: 'mock',
+            created_at: new Date(),
+            done: true,
+            done_reason: 'stop',
+            total_duration: 0,
+            load_duration: 0,
+            prompt_eval_count: 0,
+            prompt_eval_duration: 0,
+            eval_count: 0,
+            eval_duration: 0,
+        }),
+    };
+}
 suite('classifyDiff Test Suite', function () {
     this.timeout(60000);
+    // Predetermined mock responses for each classifier type
+    const mockBugFixTrue = { reasoning: 'Mock: detected bug fix', result: true, confidence: 0.95 };
+    const mockBugFixFalse = { reasoning: 'Mock: not a bug fix', result: false, confidence: 0.9 };
+    const mockFeatureTrue = { reasoning: 'Mock: detected feature', result: true, confidence: 0.95 };
+    const mockFeatureFalse = { reasoning: 'Mock: not a feature', result: false, confidence: 0.9 };
+    const mockRefactoringTrue = { reasoning: 'Mock: detected refactoring', result: true, confidence: 0.95 };
+    const mockRefactoringFalse = { reasoning: 'Mock: not refactoring', result: false, confidence: 0.9 };
+    const mockEmptyResult = { reasoning: 'Empty or binary diff', result: false, confidence: 1.0 };
     // Clear bug fix: fixing an off-by-one error causing array out of bounds
     const bugFixDiff = `
 diff --git a/src/parser.ts b/src/parser.ts
@@ -118,68 +147,80 @@ diff --git a/src/database.ts b/src/database.ts
     const emptyDiff = '';
     suite('Scenario 1: Bug Fix Diff', () => {
         test('Bug Fix Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsBugFix)(bugFixDiff);
+            const mock = createMockOllama(mockBugFixTrue);
+            const result = await (0, classifyDiff_1.classifyAsBugFix)(bugFixDiff, undefined, mock);
             console.log('Bug Fix Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Feature Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsFeature)(bugFixDiff);
+            const mock = createMockOllama(mockFeatureFalse);
+            const result = await (0, classifyDiff_1.classifyAsFeature)(bugFixDiff, undefined, mock);
             console.log('Feature Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Refactoring Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsRefactoring)(bugFixDiff);
+            const mock = createMockOllama(mockRefactoringFalse);
+            const result = await (0, classifyDiff_1.classifyAsRefactoring)(bugFixDiff, undefined, mock);
             console.log('Refactoring Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
     });
     suite('Scenario 2: Refactoring Diff', () => {
         test('Bug Fix Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsBugFix)(refactoringDiff);
+            const mock = createMockOllama(mockBugFixFalse);
+            const result = await (0, classifyDiff_1.classifyAsBugFix)(refactoringDiff, undefined, mock);
             console.log('Bug Fix Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Feature Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsFeature)(refactoringDiff);
+            const mock = createMockOllama(mockFeatureFalse);
+            const result = await (0, classifyDiff_1.classifyAsFeature)(refactoringDiff, undefined, mock);
             console.log('Feature Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Refactoring Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsRefactoring)(refactoringDiff);
+            const mock = createMockOllama(mockRefactoringTrue);
+            const result = await (0, classifyDiff_1.classifyAsRefactoring)(refactoringDiff, undefined, mock);
             console.log('Refactoring Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
     });
     suite('Scenario 3: Feature Diff', () => {
         test('Bug Fix Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsBugFix)(featureDiff);
+            const mock = createMockOllama(mockBugFixFalse);
+            const result = await (0, classifyDiff_1.classifyAsBugFix)(featureDiff, undefined, mock);
             console.log('Bug Fix Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Feature Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsFeature)(featureDiff);
+            const mock = createMockOllama(mockFeatureTrue);
+            const result = await (0, classifyDiff_1.classifyAsFeature)(featureDiff, undefined, mock);
             console.log('Feature Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Refactoring Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsRefactoring)(featureDiff);
+            const mock = createMockOllama(mockRefactoringFalse);
+            const result = await (0, classifyDiff_1.classifyAsRefactoring)(featureDiff, undefined, mock);
             console.log('Refactoring Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
     });
     suite('Scenario 4: Empty Diff', () => {
         test('Bug Fix Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsBugFix)(emptyDiff);
+            const mock = createMockOllama(mockEmptyResult);
+            const result = await (0, classifyDiff_1.classifyAsBugFix)(emptyDiff, undefined, mock);
             console.log('Bug Fix Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Feature Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsFeature)(emptyDiff);
+            const mock = createMockOllama(mockEmptyResult);
+            const result = await (0, classifyDiff_1.classifyAsFeature)(emptyDiff, undefined, mock);
             console.log('Feature Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });
         test('Refactoring Classifier', async () => {
-            const result = await (0, classifyDiff_1.classifyAsRefactoring)(emptyDiff);
+            const mock = createMockOllama(mockEmptyResult);
+            const result = await (0, classifyDiff_1.classifyAsRefactoring)(emptyDiff, undefined, mock);
             console.log('Refactoring Classifier:', JSON.stringify(result));
             assertValidClassifierResult(result);
         });

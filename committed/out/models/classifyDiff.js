@@ -144,16 +144,16 @@ async function runClassifier(ollama, prompt, rawDiffContent) {
         };
     }
 }
-async function classifyAsBugFix(diffContent, host = "http://localhost:11434") {
-    const ollama = new ollama_1.Ollama({ host });
+async function classifyAsBugFix(diffContent, host = "http://localhost:11434", ollamaClient) {
+    const ollama = ollamaClient ?? new ollama_1.Ollama({ host });
     return runClassifier(ollama, BUG_FIX_PROMPT, diffContent);
 }
-async function classifyAsFeature(diffContent, host = "http://localhost:11434") {
-    const ollama = new ollama_1.Ollama({ host });
+async function classifyAsFeature(diffContent, host = "http://localhost:11434", ollamaClient) {
+    const ollama = ollamaClient ?? new ollama_1.Ollama({ host });
     return runClassifier(ollama, FEATURE_PROMPT, diffContent);
 }
-async function classifyAsRefactoring(diffContent, host = "http://localhost:11434") {
-    const ollama = new ollama_1.Ollama({ host });
+async function classifyAsRefactoring(diffContent, host = "http://localhost:11434", ollamaClient) {
+    const ollama = ollamaClient ?? new ollama_1.Ollama({ host });
     return runClassifier(ollama, REFACTORING_PROMPT, diffContent);
 }
 //# sourceMappingURL=classifyDiff.js.map

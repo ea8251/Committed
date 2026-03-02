@@ -21,6 +21,10 @@
         "command": "committed.generateSuggestions",
         "title": "Committed: Generate Suggestions",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "committed.testGitHub",
+        "title": "Committed: Test GitHub & Git Diff"
       }
     ],
     "viewsContainers": {
@@ -77,6 +81,7 @@
     "typescript-eslint": "^8.54.0"
   },
   "dependencies": {
+    "@octokit/rest": "^22.0.1",
     "ollama": "^0.6.3",
     "simple-git": "^3.32.2",
     "zod": "^4.3.6"

@@ -1,24 +1,36 @@
-import simpleGit, { SimpleGit } from 'simple-git';
+import * as vscode from 'vscode';
 
-// Initialize simple-git in the current directory
-const git: SimpleGit = simpleGit();
-
-async function checkGitDiff() {
-  try {
-    //Displays the difference between the current version and the old version
-    const diff = await git.diff();
-    console.log('Git diff:', diff);
-  } catch (error) {
-    console.error('An error occurred:', error);
-  }
+async function getGitHubToken(): Promise<string | null> {
+    const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+    if (session) {
+        return session.accessToken;
+    }
+    return null;
 }
 
-async function gitAdd(remoteName: string, dirName: string) {
-  try {
-    //Accesses the git add -p command at a given directory
-    const add = await git.addRemote(remoteName, dirName);
-    console.log('Git diff:', add);
-  } catch (error) {
-    console.error('An error occurred:', error);
-  }
+export async function getGitHubClient() {
+    const token = await getGitHubToken();
+    if (token) {
+        const { Octokit } = await import('@octokit/rest');
+        return new Octokit({ auth: token });
+    }
+    return null;
+}
+
+export async function getGitDiff(): Promise<string | null> {
+    const gitExtension = vscode.extensions.getExtension<{ getAPI(version: number): any }>('vscode.git')?.exports;
+    if (!gitExtension) {
+        return null;
+    }
+
+    const git = gitExtension.getAPI(1);
+    const repo = git.repositories[0];
+
+    if (!repo) {
+        return null;
+    }
+
+    // Get diff of all changes (staged + unstaged)
+    const diff = await repo.diff(true);
+    return diff;
 }
