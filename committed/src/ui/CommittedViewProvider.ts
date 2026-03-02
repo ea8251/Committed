@@ -29,7 +29,7 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
     }
 
     private render() {
-        if (!this.view) return;
+        if (!this.view) { return; }
 
         const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
 

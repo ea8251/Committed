@@ -168,24 +168,27 @@ async function runClassifier(
 
 export async function classifyAsBugFix(
   diffContent: string,
-  host: string = "http://localhost:11434"
+  host: string = "http://localhost:11434",
+  ollamaClient?: Ollama
 ): Promise<ClassifierResult> {
-  const ollama = new Ollama({ host });
+  const ollama = ollamaClient ?? new Ollama({ host });
   return runClassifier(ollama, BUG_FIX_PROMPT, diffContent);
 }
 
 export async function classifyAsFeature(
   diffContent: string,
-  host: string = "http://localhost:11434"
+  host: string = "http://localhost:11434",
+  ollamaClient?: Ollama
 ): Promise<ClassifierResult> {
-  const ollama = new Ollama({ host });
+  const ollama = ollamaClient ?? new Ollama({ host });
   return runClassifier(ollama, FEATURE_PROMPT, diffContent);
 }
 
 export async function classifyAsRefactoring(
   diffContent: string,
-  host: string = "http://localhost:11434"
+  host: string = "http://localhost:11434",
+  ollamaClient?: Ollama
 ): Promise<ClassifierResult> {
-  const ollama = new Ollama({ host });
+  const ollama = ollamaClient ?? new Ollama({ host });
   return runClassifier(ollama, REFACTORING_PROMPT, diffContent);
 }
