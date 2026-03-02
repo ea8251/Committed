@@ -1,145 +1,288 @@
 import * as vscode from "vscode";
 
+type FinalClassification = {
+  label: "Bug Fix" | "Feature" | "Refactor" | "Unclear";
+  confidence: number;
+  reasoning?: string;
+};
+
 export class CommittedViewProvider implements vscode.WebviewViewProvider {
-    private view?: vscode.WebviewView;
-    private hasGenerated = false;
+  private view?: vscode.WebviewView;
+  private hasGenerated = false;
 
-    constructor(private readonly extensionUri: vscode.Uri) { }
+  private lastClassification?: FinalClassification;
 
-    resolveWebviewView(view: vscode.WebviewView) {
-        this.view = view;
+  constructor(private readonly extensionUri: vscode.Uri) { }
 
-        view.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this.extensionUri],
-        };
+  resolveWebviewView(view: vscode.WebviewView) {
+    this.view = view;
 
-        view.webview.onDidReceiveMessage((msg) => {
-            if (msg?.type === "generate") {
-                this.generate();
-            }
-        });
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this.extensionUri],
+    };
 
+    view.webview.onDidReceiveMessage((msg) => {
+      if (msg?.type === "generate") {
+        this.generate();
+        return;
+      }
+
+      // Pass-through events for extension host to handle
+      if (msg?.type === "accept") {
+        // Extension should handle persisting acceptance / next steps
+        return;
+      }
+
+      if (msg?.type === "reject") {
+        // Clear UI immediately; extension should mark re-run on next save
+        this.hasGenerated = false;
+        this.lastClassification = undefined;
         this.render();
-    }
+        return;
+      }
 
-    generate() {
-        this.hasGenerated = true;
+      if (msg?.type === "toggleReasoning") {
+        // purely UI state; no-op server side, render handles checkbox state client-side
         this.render();
-    }
+      }
+    });
 
-    private render() {
-        if (!this.view) { return; }
+    this.render();
+  }
 
-        const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
+  generate() {
+    this.hasGenerated = true;
+    this.render();
+  }
 
-        const hunkText =
-            "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
-        const messageText =
-            "ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+  /** Called by extension code when a new classification arrives */
+  public publishClassification(result: FinalClassification) {
+    this.lastClassification = result;
 
-        const dataHtml = this.hasGenerated
-            ? `
-				<div class="card">
-					<div class="row">
-						<div class="k">Hunk:</div>
-						<div class="v">${escapeHtml(hunkText)}</div>
-					</div>
-					<div class="row">
-						<div class="k">AI message:</div>
-						<div class="v">${escapeHtml(messageText)}</div>
-					</div>
-				</div>
-			`
-            : "";
+    // If the webview is already loaded, push message (fast)
+    this.view?.webview.postMessage({ type: "classification", payload: result });
 
-        this.view.webview.html = `<!doctype html>
+    // Also re-render so HTML contains latest on initial load / refresh
+    this.render();
+  }
+
+  private render() {
+    if (!this.view) return;
+
+    const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
+
+    const classification = this.lastClassification;
+
+    const classificationHtml = classification
+      ? `
+        <div class="card">
+          <div class="row">
+            <div class="k">Type:</div>
+            <div class="v"><span class="pill">${escapeHtml(classification.label)}</span></div>
+          </div>
+          <div class="row">
+            <div class="k">Confidence:</div>
+            <div class="v" id="conf">${classification.confidence.toFixed(2)}</div>
+          </div>
+
+          <div class="row">
+            <div class="k">Reasoning:</div>
+            <div class="v">
+              <label class="toggle">
+                <input type="checkbox" id="showReasoning" />
+                Show
+              </label>
+            </div>
+          </div>
+
+          <div class="reasoning" id="reasoning" style="display:none;">${escapeHtml(
+        classification.reasoning ?? "—"
+      )}</div>
+
+          <div class="actions">
+            <button class="btn secondary" id="accept">Accept</button>
+            <button class="btn danger" id="reject">Reject</button>
+          </div>
+        </div>
+      `
+      : `
+        <div class="card">
+          <div class="row">
+            <div class="k">Type:</div>
+            <div class="v">—</div>
+          </div>
+          <div class="row">
+            <div class="k">Confidence:</div>
+            <div class="v">—</div>
+          </div>
+        </div>
+      `;
+
+    const hunkText =
+      "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
+    const messageText =
+      "ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+
+    const dataHtml = this.hasGenerated
+      ? `
+        <div class="card">
+          <div class="row">
+            <div class="k">Hunk:</div>
+            <div class="v">${escapeHtml(hunkText)}</div>
+          </div>
+          <div class="row">
+            <div class="k">AI message:</div>
+            <div class="v">${escapeHtml(messageText)}</div>
+          </div>
+        </div>
+      `
+      : "";
+
+    this.view.webview.html = `<!doctype html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>Committed</title>
-	<style>
-		:root {
-			--pad: 14px;
-			--radius: 12px;
-		}
-		body {
-			padding: var(--pad);
-			font-family: var(--vscode-font-family);
-			color: var(--vscode-foreground);
-			background: var(--vscode-sideBar-background);
-		}
-		.h1 {
-			font-weight: 800;
-			font-size: 18px;
-			margin: 0 0 12px 0;
-		}
-		.btn {
-			width: 100%;
-			border: 0;
-			border-radius: 10px;
-			padding: 12px 14px;
-			cursor: pointer;
-			font-weight: 800;
-			font-size: 14px;
-			color: var(--vscode-button-foreground);
-			background: var(--vscode-button-background);
-		}
-		.btn:hover {
-			background: var(--vscode-button-hoverBackground);
-		}
-		.stack {
-			display: grid;
-			gap: 12px;
-		}
-		.card {
-			border-radius: var(--radius);
-			padding: 12px;
-			border: 1px solid var(--vscode-sideBar-border, rgba(255,255,255,0.08));
-			background: var(--vscode-editorWidget-background);
-		}
-		.row {
-			display: grid;
-			grid-template-columns: 82px 1fr;
-			gap: 10px;
-			align-items: start;
-			margin: 8px 0;
-		}
-		.k {
-			font-weight: 800;
-			opacity: 0.9;
-		}
-		.v {
-			opacity: 0.95;
-			line-height: 1.35;
-			word-break: break-word;
-		}
-	</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Committed</title>
+  <style>
+    :root { --pad: 14px; --radius: 12px; }
+    body {
+      padding: var(--pad);
+      font-family: var(--vscode-font-family);
+      color: var(--vscode-foreground);
+      background: var(--vscode-sideBar-background);
+    }
+    .h1 { font-weight: 800; font-size: 18px; margin: 0 0 12px 0; }
+    .btn {
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 14px;
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
+    }
+    .btn:hover { background: var(--vscode-button-hoverBackground); }
+    .btn.secondary {
+      color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+      background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+    }
+    .btn.secondary:hover {
+      background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
+    }
+    .btn.danger {
+      color: var(--vscode-editor-background);
+      background: var(--vscode-errorForeground);
+    }
+    .stack { display: grid; gap: 12px; }
+    .card {
+      border-radius: var(--radius);
+      padding: 12px;
+      border: 1px solid var(--vscode-sideBar-border, rgba(255,255,255,0.08));
+      background: var(--vscode-editorWidget-background);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 82px 1fr;
+      gap: 10px;
+      align-items: start;
+      margin: 8px 0;
+    }
+    .k { font-weight: 800; opacity: 0.9; }
+    .v { opacity: 0.95; line-height: 1.35; word-break: break-word; }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 800;
+      border: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-input-background);
+    }
+
+    .toggle { display: inline-flex; gap: 8px; align-items: center; }
+    .reasoning {
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-editor-background);
+      white-space: pre-wrap;
+      font-family: var(--vscode-editor-font-family);
+      font-size: 12px;
+      opacity: 0.95;
+    }
+
+    .actions {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+  </style>
 </head>
 <body>
-	<div class="stack">
-		<div class="h1">Committed</div>
-		<button class="btn" id="gen">${buttonLabel}</button>
-		${dataHtml}
-	</div>
+  <div class="stack">
+    <div class="h1">Committed</div>
 
-	<script>
-		const vscode = acquireVsCodeApi();
-		document.getElementById("gen").addEventListener("click", () => {
-			vscode.postMessage({ type: "generate" });
-		});
-	</script>
+    ${classificationHtml}
+
+    <button class="btn" id="gen">${buttonLabel}</button>
+    ${dataHtml}
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+
+    document.getElementById("gen").addEventListener("click", () => {
+      vscode.postMessage({ type: "generate" });
+    });
+
+    const acceptBtn = document.getElementById("accept");
+    if (acceptBtn) {
+      acceptBtn.addEventListener("click", () => {
+        vscode.postMessage({ type: "accept" });
+      });
+    }
+
+    const rejectBtn = document.getElementById("reject");
+    if (rejectBtn) {
+      rejectBtn.addEventListener("click", () => {
+        vscode.postMessage({ type: "reject" });
+      });
+    }
+
+    // Live updates from extension
+    window.addEventListener("message", (event) => {
+      const msg = event.data;
+      if (!msg || msg.type !== "classification") return;
+
+      // Simple approach: extension side re-renders with updated HTML already.
+      // If you want to update in-place, do it here.
+    });
+
+    // Reasoning toggle (only if it exists in DOM)
+    const showReasoning = document.getElementById("showReasoning");
+    const reasoning = document.getElementById("reasoning");
+    if (showReasoning && reasoning) {
+      showReasoning.addEventListener("change", () => {
+        reasoning.style.display = showReasoning.checked ? "block" : "none";
+      });
+    }
+  </script>
 </body>
 </html>`;
-    }
+  }
 }
 
 function escapeHtml(input: string) {
-    return input
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+  return input
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }

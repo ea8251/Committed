@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
 import { CommittedViewProvider } from "./ui/CommittedViewProvider";
+import { ClassificationScheduler } from "./models/scheduler";
 import { getGitHubClient, getGitDiff } from "./github";
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -33,6 +34,12 @@ export function activate(context: vscode.ExtensionContext) {
 			viewProvider.generate();
 		})
 	);
+
+	const scheduler = new ClassificationScheduler(context, (result) => {
+		viewProvider.publishClassification(result);
+	});
+	scheduler.start();
+	context.subscriptions.push({ dispose: () => scheduler.dispose() });
 
 	// Test command for GitHub and Git diff
 	context.subscriptions.push(

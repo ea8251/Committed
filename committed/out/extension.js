@@ -39,6 +39,7 @@ exports.deactivate = deactivate;
 // Import the module and reference it with the alias vscode in your code below
 const vscode = __importStar(require("vscode"));
 const CommittedViewProvider_1 = require("./ui/CommittedViewProvider");
+const scheduler_1 = require("./models/scheduler");
 const github_1 = require("./github");
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -60,6 +61,11 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand("committed.generateSuggestions", () => {
         viewProvider.generate();
     }));
+    const scheduler = new scheduler_1.ClassificationScheduler(context, (result) => {
+        viewProvider.publishClassification(result);
+    });
+    scheduler.start();
+    context.subscriptions.push({ dispose: () => scheduler.dispose() });
     // Test command for GitHub and Git diff
     context.subscriptions.push(vscode.commands.registerCommand("committed.testGitHub", async () => {
         try {
