@@ -6,29 +6,27 @@ exports.classifyAsFeature = classifyAsFeature;
 exports.classifyAsRefactoring = classifyAsRefactoring;
 const ollama_1 = require("ollama");
 const zod_1 = require("zod");
-// 1. Zod schema updated with "reasoning" for Chain of Thought
 const ClassifierSchema = zod_1.z.object({
     reasoning: zod_1.z.string().describe("Step-by-step analysis of the + and - lines before deciding"),
     result: zod_1.z.boolean().describe("Whether the diff matches this classification"),
     confidence: zod_1.z.number().min(0).max(1).describe("Confidence score for the classification"),
 });
-// 2. Diff Preprocessor to save context window and improve accuracy
+// removing line numbers and other white space in the gitdiff before sending to the LLM
 function preprocessDiff(rawDiff) {
-    if (!rawDiff || rawDiff.trim() === "")
+    if (!rawDiff || rawDiff.trim() === "") {
         return "";
+    }
     const lines = rawDiff.split("\n");
     const cleanedLines = [];
     for (const line of lines) {
-        // Skip useless Git metadata hashes (e.g., "index 83db48f..f9d6418 100644")
-        if (line.startsWith("index "))
+        if (line.startsWith("index ")) {
             continue;
-        // Skip binary files which break LLM context
+        }
         if (line.startsWith("GIT binary patch") || line.includes("Binary files")) {
             return "[BINARY FILE CHANGES OMITTED]";
         }
         cleanedLines.push(line);
     }
-    // Trim excessive trailing whitespace and limit massive diffs if necessary
     return cleanedLines.join("\n").trim();
 }
 const createClassifierPrompt = (category, description, examples) => `
@@ -121,7 +119,6 @@ NOT REFACTORING (FALSE - it's a bug fix):
 -  return user.name;
 +  return user?.name ?? 'Unknown';`);
 async function runClassifier(ollama, prompt, rawDiffContent) {
-    // 3. Apply preprocessing before sending to the LLM
     const cleanedDiff = preprocessDiff(rawDiffContent);
     const response = await ollama.generate({
         model: "llama3.2",
@@ -130,8 +127,8 @@ async function runClassifier(ollama, prompt, rawDiffContent) {
         format: "json",
         stream: false,
         options: {
-            temperature: 0, // CRITICAL: Forces deterministic, factual classification
-            num_predict: 500, // Gives enough room for the reasoning field
+            temperature: 0,
+            num_predict: 500,
         }
     });
     try {
@@ -139,7 +136,6 @@ async function runClassifier(ollama, prompt, rawDiffContent) {
         return ClassifierSchema.parse(parsed);
     }
     catch (error) {
-        // Fallback in case the LLM formatting breaks
         console.error("Failed to parse LLM response:", response.response);
         return {
             reasoning: "Failed to parse LLM output.",
