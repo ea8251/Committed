@@ -1,89 +1,106 @@
 import * as vscode from "vscode";
 
 type FinalClassification = {
-  label: "Bug Fix" | "Feature" | "Refactor" | "Unclear";
-  confidence: number;
-  reasoning?: string;
+    label: "Bug Fix" | "Feature" | "Refactor" | "Unclear";
+    confidence: number;
+    reasoning?: string;
 };
 
 export class CommittedViewProvider implements vscode.WebviewViewProvider {
-  private view?: vscode.WebviewView;
-  private hasGenerated = false;
+    private view?: vscode.WebviewView;
+    private hasGenerated = false;
 
-  private lastClassification?: FinalClassification;
+    private lastClassification?: FinalClassification;
 
-  constructor(private readonly extensionUri: vscode.Uri) { }
+    constructor(private readonly extensionUri: vscode.Uri) { }
 
-  resolveWebviewView(view: vscode.WebviewView) {
-    this.view = view;
+    resolveWebviewView(view: vscode.WebviewView) {
+        this.view = view;
 
-    view.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this.extensionUri],
-    };
+        view.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this.extensionUri],
+        };
 
-    view.webview.onDidReceiveMessage((msg) => {
-      if (msg?.type === "generate") {
-        this.generate();
-        return;
-      }
+        view.webview.onDidReceiveMessage((msg) => {
+            if (msg?.type === "generate") {
+                // Ask extension host to run classification now (host should handle actual work)
+                this.hasGenerated = true;
+                this.render();
+                this.view?.webview.postMessage({ type: "requestGenerate" });
+                return;
+            }
 
-      // Pass-through events for extension host to handle
-      if (msg?.type === "accept") {
-        // Extension should handle persisting acceptance / next steps
-        return;
-      }
+            // Pass-through events for extension host to handle (persisting acceptance, etc.)
+            if (msg?.type === "accept") {
+                this.view?.webview.postMessage({ type: "accepted", payload: this.lastClassification });
+                return;
+            }
 
-      if (msg?.type === "reject") {
-        // Clear UI immediately; extension should mark re-run on next save
-        this.hasGenerated = false;
-        this.lastClassification = undefined;
+            if (msg?.type === "reject") {
+                // Clear UI immediately; extension should mark re-run on next save
+                const prev = this.lastClassification;
+                this.hasGenerated = false;
+                this.lastClassification = undefined;
+                this.render();
+                this.view?.webview.postMessage({ type: "rejected", payload: prev });
+                return;
+            }
+
+            if (msg?.type === "toggleReasoning") {
+                // purely UI state; no-op server side
+                return;
+            }
+        });
+
         this.render();
-        return;
-      }
+    }
 
-      if (msg?.type === "toggleReasoning") {
-        // purely UI state; no-op server side, render handles checkbox state client-side
+    generate() {
+        this.hasGenerated = true;
         this.render();
-      }
-    });
+    }
 
-    this.render();
-  }
+    /** Called by extension code when a new classification arrives */
+    public publishClassification(result: FinalClassification) {
+        this.lastClassification = result;
+        this.hasGenerated = true;
 
-  generate() {
-    this.hasGenerated = true;
-    this.render();
-  }
+        // If the webview is already loaded, push message (fast)
+        this.view?.webview.postMessage({ type: "classification", payload: result });
 
-  /** Called by extension code when a new classification arrives */
-  public publishClassification(result: FinalClassification) {
-    this.lastClassification = result;
+        // Also re-render so HTML contains latest on initial load / refresh
+        this.render();
+    }
 
-    // If the webview is already loaded, push message (fast)
-    this.view?.webview.postMessage({ type: "classification", payload: result });
+    private render() {
+        if (!this.view) {
+            return;
+        }
 
-    // Also re-render so HTML contains latest on initial load / refresh
-    this.render();
-  }
+        const webview = this.view.webview;
+        const nonce = getNonce();
 
-  private render() {
-    if (!this.view) return;
+        const csp = [
+            `default-src 'none'`,
+            `img-src ${webview.cspSource} https: data:`,
+            `style-src ${webview.cspSource} 'unsafe-inline'`,
+            `script-src 'nonce-${nonce}'`,
+        ].join("; ");
 
-    const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
+        const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
+        const classification = this.lastClassification;
 
-    const classification = this.lastClassification;
-
-    const classificationHtml = classification
-      ? `
+        const classificationHtml = classification
+            ? `
         <div class="card">
           <div class="row">
             <div class="k">Type:</div>
-            <div class="v"><span class="pill">${escapeHtml(classification.label)}</span></div>
+            <div class="v"><span class="pill" id="type">${escapeHtml(classification.label)}</span></div>
           </div>
           <div class="row">
             <div class="k">Confidence:</div>
-            <div class="v" id="conf">${classification.confidence.toFixed(2)}</div>
+            <div class="v" id="conf">${Number(classification.confidence).toFixed(2)}</div>
           </div>
 
           <div class="row">
@@ -97,8 +114,8 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
           </div>
 
           <div class="reasoning" id="reasoning" style="display:none;">${escapeHtml(
-        classification.reasoning ?? "—"
-      )}</div>
+                classification.reasoning ?? "—"
+            )}</div>
 
           <div class="actions">
             <button class="btn secondary" id="accept">Accept</button>
@@ -106,43 +123,43 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
           </div>
         </div>
       `
-      : `
+            : `
         <div class="card">
           <div class="row">
             <div class="k">Type:</div>
-            <div class="v">—</div>
+            <div class="v" id="type">—</div>
           </div>
           <div class="row">
             <div class="k">Confidence:</div>
-            <div class="v">—</div>
+            <div class="v" id="conf">—</div>
+          </div>
+          <div class="actions">
+            <button class="btn secondary" id="accept" disabled>Accept</button>
+            <button class="btn danger" id="reject" disabled>Reject</button>
           </div>
         </div>
       `;
 
-    const hunkText =
-      "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
-    const messageText =
-      "ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
-
-    const dataHtml = this.hasGenerated
-      ? `
-        <div class="card">
+        const dataHtml = this.hasGenerated
+            ? `
+        <div class="card" id="dataCard">
           <div class="row">
             <div class="k">Hunk:</div>
-            <div class="v">${escapeHtml(hunkText)}</div>
+            <div class="v" id="hunk">—</div>
           </div>
           <div class="row">
             <div class="k">AI message:</div>
-            <div class="v">${escapeHtml(messageText)}</div>
+            <div class="v" id="aiMessage">—</div>
           </div>
         </div>
       `
-      : "";
+            : "";
 
-    this.view.webview.html = `<!doctype html>
+        this.view.webview.html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Committed</title>
   <style>
@@ -230,16 +247,20 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
 
     ${classificationHtml}
 
-    <button class="btn" id="gen">${buttonLabel}</button>
+    <button class="btn" id="gen">${escapeHtml(buttonLabel)}</button>
+
     ${dataHtml}
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    document.getElementById("gen").addEventListener("click", () => {
-      vscode.postMessage({ type: "generate" });
-    });
+    const genBtn = document.getElementById("gen");
+    if (genBtn) {
+      genBtn.addEventListener("click", () => {
+        vscode.postMessage({ type: "generate" });
+      });
+    }
 
     const acceptBtn = document.getElementById("accept");
     if (acceptBtn) {
@@ -255,34 +276,72 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
       });
     }
 
-    // Live updates from extension
-    window.addEventListener("message", (event) => {
-      const msg = event.data;
-      if (!msg || msg.type !== "classification") return;
-
-      // Simple approach: extension side re-renders with updated HTML already.
-      // If you want to update in-place, do it here.
-    });
-
     // Reasoning toggle (only if it exists in DOM)
     const showReasoning = document.getElementById("showReasoning");
     const reasoning = document.getElementById("reasoning");
     if (showReasoning && reasoning) {
       showReasoning.addEventListener("change", () => {
         reasoning.style.display = showReasoning.checked ? "block" : "none";
+        vscode.postMessage({ type: "toggleReasoning", payload: { show: showReasoning.checked } });
       });
     }
+
+    function setClassification(c) {
+      const typeEl = document.getElementById("type");
+      const confEl = document.getElementById("conf");
+      const reasoningEl = document.getElementById("reasoning");
+
+      if (typeEl) typeEl.textContent = c?.label ?? "—";
+      if (confEl) confEl.textContent = c ? Number(c.confidence).toFixed(2) : "—";
+      if (reasoningEl) reasoningEl.textContent = c?.reasoning ?? "—";
+
+      const a = document.getElementById("accept");
+      const r = document.getElementById("reject");
+      if (a) a.disabled = !c;
+      if (r) r.disabled = !c;
+    }
+
+    // Live updates from extension
+    window.addEventListener("message", (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg.type !== "string") {
+        return;
+      }
+
+      if (msg.type === "classification") {
+        setClassification(msg.payload);
+        return;
+      }
+
+      // Optional: if your extension later posts these, you can show them.
+      if (msg.type === "suggestion") {
+        const hunkEl = document.getElementById("hunk");
+        const aiEl = document.getElementById("aiMessage");
+        if (hunkEl && msg.payload?.hunk) hunkEl.textContent = msg.payload.hunk;
+        if (aiEl && msg.payload?.message) aiEl.textContent = msg.payload.message;
+        return;
+      }
+    });
   </script>
 </body>
 </html>`;
-  }
+    }
 }
 
 function escapeHtml(input: string) {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    return input
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function getNonce() {
+    let text = "";
+    const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    for (let i = 0; i < 32; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
 }
