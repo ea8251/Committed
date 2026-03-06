@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 
 type FinalClassification = {
-    label: "Bug Fix" | "Feature" | "Refactor" | "Unclear";
-    confidence: number;
+    label: "Bug Fix" | "Feature" | "Refactor";
+    probability: number;
     reasoning?: string;
 };
 
@@ -11,8 +11,28 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
     private hasGenerated = false;
 
     private lastClassification?: FinalClassification;
+    private logEntries: string[] = [];
+    private static readonly MAX_LOG_ENTRIES = 100;
+
+    private readonly _onAccept = new vscode.EventEmitter<FinalClassification>();
+    public readonly onAccept = this._onAccept.event;
+
+    private readonly _onReject = new vscode.EventEmitter<void>();
+    public readonly onReject = this._onReject.event;
 
     constructor(private readonly extensionUri: vscode.Uri) { }
+
+    /** Push a timestamped log entry into the debug panel */
+    public pushLog(message: string) {
+        const ts = new Date().toLocaleTimeString();
+        const entry = `[${ts}] ${message}`;
+        this.logEntries.push(entry);
+        if (this.logEntries.length > CommittedViewProvider.MAX_LOG_ENTRIES) {
+            this.logEntries.shift();
+        }
+        // Push to webview live if it's open
+        this.view?.webview.postMessage({ type: "log", payload: entry });
+    }
 
     resolveWebviewView(view: vscode.WebviewView) {
         this.view = view;
@@ -23,27 +43,19 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
         };
 
         view.webview.onDidReceiveMessage((msg) => {
-            if (msg?.type === "generate") {
-                // Ask extension host to run classification now (host should handle actual work)
-                this.hasGenerated = true;
-                this.render();
-                this.view?.webview.postMessage({ type: "requestGenerate" });
-                return;
-            }
-
             // Pass-through events for extension host to handle (persisting acceptance, etc.)
             if (msg?.type === "accept") {
-                this.view?.webview.postMessage({ type: "accepted", payload: this.lastClassification });
+                if (this.lastClassification) {
+                    this._onAccept.fire(this.lastClassification);
+                }
                 return;
             }
 
             if (msg?.type === "reject") {
-                // Clear UI immediately; extension should mark re-run on next save
-                const prev = this.lastClassification;
                 this.hasGenerated = false;
                 this.lastClassification = undefined;
                 this.render();
-                this.view?.webview.postMessage({ type: "rejected", payload: prev });
+                this._onReject.fire();
                 return;
             }
 
@@ -56,11 +68,6 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
         this.render();
     }
 
-    generate() {
-        this.hasGenerated = true;
-        this.render();
-    }
-
     /** Called by extension code when a new classification arrives */
     public publishClassification(result: FinalClassification) {
         this.lastClassification = result;
@@ -70,6 +77,13 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
         this.view?.webview.postMessage({ type: "classification", payload: result });
 
         // Also re-render so HTML contains latest on initial load / refresh
+        this.render();
+    }
+
+    /** Clear classification state and re-render the webview. */
+    public reset() {
+        this.hasGenerated = false;
+        this.lastClassification = undefined;
         this.render();
     }
 
@@ -88,7 +102,6 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
             `script-src 'nonce-${nonce}'`,
         ].join("; ");
 
-        const buttonLabel = this.hasGenerated ? "Regenerate" : "Generate";
         const classification = this.lastClassification;
 
         const classificationHtml = classification
@@ -99,8 +112,8 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
             <div class="v"><span class="pill" id="type">${escapeHtml(classification.label)}</span></div>
           </div>
           <div class="row">
-            <div class="k">Confidence:</div>
-            <div class="v" id="conf">${Number(classification.confidence).toFixed(2)}</div>
+            <div class="k">Probability:</div>
+            <div class="v" id="conf">${Number(classification.probability).toFixed(2)}</div>
           </div>
 
           <div class="row">
@@ -130,7 +143,7 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
             <div class="v" id="type">—</div>
           </div>
           <div class="row">
-            <div class="k">Confidence:</div>
+            <div class="k">Probability:</div>
             <div class="v" id="conf">—</div>
           </div>
           <div class="actions">
@@ -140,20 +153,17 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
         </div>
       `;
 
-        const dataHtml = this.hasGenerated
-            ? `
-        <div class="card" id="dataCard">
-          <div class="row">
-            <div class="k">Hunk:</div>
-            <div class="v" id="hunk">—</div>
+        const dataHtml = "";
+
+        const logHtml = `
+        <div class="card" style="margin-top:8px;">
+          <div class="row" style="grid-template-columns:1fr auto;">
+            <div class="k" style="font-size:13px;">🔍 Debug Log</div>
+            <button class="btn-tiny" id="clearLog">Clear</button>
           </div>
-          <div class="row">
-            <div class="k">AI message:</div>
-            <div class="v" id="aiMessage">—</div>
-          </div>
+          <div id="logPanel" class="log-panel">${this.logEntries.map(e => `<div class="log-entry">${escapeHtml(e)}</div>`).join("")}</div>
         </div>
-      `
-            : "";
+      `;
 
         this.view.webview.html = `<!doctype html>
 <html lang="en">
@@ -239,6 +249,34 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
+    .log-panel {
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-editor-background);
+      font-family: var(--vscode-editor-font-family);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .log-entry {
+      opacity: 0.85;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-entry:nth-child(even) {
+      opacity: 0.70;
+    }
+    .btn-tiny {
+      padding: 2px 8px;
+      font-size: 11px;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      background: var(--vscode-input-background);
+      color: var(--vscode-foreground);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -247,20 +285,13 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
 
     ${classificationHtml}
 
-    <button class="btn" id="gen">${escapeHtml(buttonLabel)}</button>
-
     ${dataHtml}
+
+    ${logHtml}
   </div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-
-    const genBtn = document.getElementById("gen");
-    if (genBtn) {
-      genBtn.addEventListener("click", () => {
-        vscode.postMessage({ type: "generate" });
-      });
-    }
 
     const acceptBtn = document.getElementById("accept");
     if (acceptBtn) {
@@ -292,13 +323,33 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
       const reasoningEl = document.getElementById("reasoning");
 
       if (typeEl) typeEl.textContent = c?.label ?? "—";
-      if (confEl) confEl.textContent = c ? Number(c.confidence).toFixed(2) : "—";
+      if (confEl) confEl.textContent = c ? Number(c.probability).toFixed(2) : "—";
       if (reasoningEl) reasoningEl.textContent = c?.reasoning ?? "—";
 
       const a = document.getElementById("accept");
       const r = document.getElementById("reject");
       if (a) a.disabled = !c;
       if (r) r.disabled = !c;
+    }
+
+    // Clear log button
+    const clearLogBtn = document.getElementById("clearLog");
+    if (clearLogBtn) {
+      clearLogBtn.addEventListener("click", () => {
+        const panel = document.getElementById("logPanel");
+        if (panel) panel.innerHTML = '';
+        vscode.postMessage({ type: "clearLog" });
+      });
+    }
+
+    function appendLog(text) {
+      const panel = document.getElementById("logPanel");
+      if (!panel) return;
+      const div = document.createElement("div");
+      div.className = "log-entry";
+      div.textContent = text;
+      panel.appendChild(div);
+      panel.scrollTop = panel.scrollHeight;
     }
 
     // Live updates from extension
@@ -308,17 +359,14 @@ export class CommittedViewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      if (msg.type === "classification") {
-        setClassification(msg.payload);
+      if (msg.type === "log") {
+        appendLog(msg.payload);
         return;
       }
 
-      // Optional: if your extension later posts these, you can show them.
-      if (msg.type === "suggestion") {
-        const hunkEl = document.getElementById("hunk");
-        const aiEl = document.getElementById("aiMessage");
-        if (hunkEl && msg.payload?.hunk) hunkEl.textContent = msg.payload.hunk;
-        if (aiEl && msg.payload?.message) aiEl.textContent = msg.payload.message;
+      if (msg.type === "classification") {
+        setClassification(msg.payload);
+        appendLog("✅ Classification received: " + (msg.payload?.label ?? "unknown") + " (" + Number(msg.payload?.probability ?? 0).toFixed(2) + ")");
         return;
       }
     });

@@ -3,10 +3,11 @@ import crypto from "crypto";
 
 import { classifyAsBugFix, classifyAsFeature, classifyAsRefactoring, preprocessDiff } from "../models/classifyDiff";
 
+export const PROBABILITY_THRESHOLD = 0.75;
+
 export type FinalClassification = {
-    label: "Bug Fix" | "Feature" | "Refactor" | "Unclear";
-    confidence: number;
-    // Keep it if you want to show it, or omit it from UI if you don’t.
+    label: "Bug Fix" | "Feature" | "Refactor";
+    probability: number;
     reasoning?: string;
 };
 
@@ -22,15 +23,20 @@ export class ClassificationScheduler {
     private pending = false;
 
     private lastFingerprint: string | undefined;
+    private paused = false;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly publish: (result: FinalClassification) => void
+        private readonly publish: (result: FinalClassification) => void,
+        private readonly log: (message: string) => void = () => { },
     ) { }
 
     start() {
+        this.log("Scheduler started. Triggers: manual save, 30-min interval.");
+
         // Every 30 minutes
         this.intervalTimer = setInterval(() => {
+            this.log("30-min interval trigger");
             this.trigger().catch(() => { });
         }, 30 * 60 * 1000);
 
@@ -54,6 +60,9 @@ export class ClassificationScheduler {
         if (this.debounceTimer) clearTimeout(this.debounceTimer);
     }
 
+    pause() { this.paused = true; }
+    resume() { this.paused = false; this.lastFingerprint = undefined; }
+
     private scheduleDebounced(ms: number) {
         if (this.debounceTimer) clearTimeout(this.debounceTimer);
         this.debounceTimer = setTimeout(() => {
@@ -61,9 +70,20 @@ export class ClassificationScheduler {
         }, ms);
     }
 
+    /** Manually trigger classification (e.g. from the Generate button) */
+    public manualTrigger(): void {
+        this.log("Manual trigger requested");
+        this.trigger().catch((err) => {
+            this.log(`Manual trigger error: ${err}`);
+        });
+    }
+
     private async getWorkingDiffText(): Promise<string> {
         const folder = vscode.workspace.workspaceFolders?.[0];
-        if (!folder) return "";
+        if (!folder) {
+            this.log("No workspace folder found — cannot get diff");
+            return "";
+        }
 
         const { execFile } = await import("child_process");
 
@@ -80,6 +100,7 @@ export class ClassificationScheduler {
     }
 
     private async trigger() {
+        if (this.paused) { return; }
         if (this.running) {
             this.pending = true;
             return;
@@ -87,38 +108,61 @@ export class ClassificationScheduler {
 
         this.running = (async () => {
             try {
+                this.log("Getting working-tree diff...");
                 const rawDiff = await this.getWorkingDiffText();
                 const cleaned = preprocessDiff(rawDiff);
-                if (!cleaned.trim()) return;
+                if (!cleaned.trim()) {
+                    this.log("No diff found (working tree is clean)");
+                    return;
+                }
+
+                this.log(`Diff found (${cleaned.length} chars)`);
 
                 const fp = sha256(cleaned);
-                if (fp === this.lastFingerprint) return;
+                if (fp === this.lastFingerprint) {
+                    this.log("Diff unchanged since last classification — skipping");
+                    return;
+                }
                 this.lastFingerprint = fp;
 
+                this.log("Running 3 classifiers (bug / feature / refactor)...");
                 // Run your existing classifiers
                 const [bug, feat, ref] = await Promise.all([
                     classifyAsBugFix(cleaned),
                     classifyAsFeature(cleaned),
                     classifyAsRefactoring(cleaned),
                 ]);
+                this.log(`Bug: prob=${bug.probability.toFixed(2)}`);
+                this.log(`Feature: prob=${feat.probability.toFixed(2)}`);
+                this.log(`Refactor: prob=${ref.probability.toFixed(2)}`);
 
-                // Pick the best “true” result by confidence
+                // Pick the best candidate by probability, only if it meets the threshold
                 const candidates = [
                     { label: "Bug Fix" as const, ...bug },
                     { label: "Feature" as const, ...feat },
                     { label: "Refactor" as const, ...ref },
                 ];
 
-                const trueOnes = candidates.filter((c) => c.result === true);
-                const best = (trueOnes.length ? trueOnes : candidates).sort((a, b) => b.confidence - a.confidence)[0];
+                const aboveThreshold = candidates.filter((c) => c.probability >= PROBABILITY_THRESHOLD);
 
-                const finalResult: FinalClassification =
-                    trueOnes.length === 0
-                        ? { label: "Unclear", confidence: best.confidence, reasoning: best.reasoning }
-                        : { label: best.label, confidence: best.confidence, reasoning: best.reasoning };
+                if (aboveThreshold.length === 0) {
+                    this.log(`⏭️ No classifier met probability threshold ${PROBABILITY_THRESHOLD} — staying silent`);
+                    return;
+                }
 
+                const best = aboveThreshold.sort((a, b) => b.probability - a.probability)[0];
+
+                const finalResult: FinalClassification = {
+                    label: best.label,
+                    probability: best.probability,
+                    reasoning: best.reasoning,
+                };
+
+                this.log(`✅ Final: ${finalResult.label} (${finalResult.probability.toFixed(2)})`);
                 this.publish(finalResult);
                 await this.context.globalState.update("committed.lastClassification", finalResult);
+            } catch (error) {
+                this.log(`❌ Classification error: ${error}`);
             } finally {
                 this.running = undefined;
                 if (this.pending) {

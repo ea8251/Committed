@@ -59,13 +59,13 @@ function createMockOllama(response) {
 suite('classifyDiff Test Suite', function () {
     this.timeout(60000);
     // Predetermined mock responses for each classifier type
-    const mockBugFixTrue = { reasoning: 'Mock: detected bug fix', result: true, confidence: 0.95 };
-    const mockBugFixFalse = { reasoning: 'Mock: not a bug fix', result: false, confidence: 0.9 };
-    const mockFeatureTrue = { reasoning: 'Mock: detected feature', result: true, confidence: 0.95 };
-    const mockFeatureFalse = { reasoning: 'Mock: not a feature', result: false, confidence: 0.9 };
-    const mockRefactoringTrue = { reasoning: 'Mock: detected refactoring', result: true, confidence: 0.95 };
-    const mockRefactoringFalse = { reasoning: 'Mock: not refactoring', result: false, confidence: 0.9 };
-    const mockEmptyResult = { reasoning: 'Empty or binary diff', result: false, confidence: 1.0 };
+    const mockBugFixTrue = { reasoning: 'Mock: detected bug fix', probability: 0.95 };
+    const mockBugFixFalse = { reasoning: 'Mock: not a bug fix', probability: 0.1 };
+    const mockFeatureTrue = { reasoning: 'Mock: detected feature', probability: 0.95 };
+    const mockFeatureFalse = { reasoning: 'Mock: not a feature', probability: 0.1 };
+    const mockRefactoringTrue = { reasoning: 'Mock: detected refactoring', probability: 0.95 };
+    const mockRefactoringFalse = { reasoning: 'Mock: not refactoring', probability: 0.1 };
+    const mockEmptyResult = { reasoning: 'Empty or binary diff', probability: 0.0 };
     // Clear bug fix: fixing an off-by-one error causing array out of bounds
     const bugFixDiff = `
 diff --git a/src/parser.ts b/src/parser.ts
@@ -227,8 +227,7 @@ diff --git a/src/database.ts b/src/database.ts
     });
 });
 function assertValidClassifierResult(result) {
-    assert.ok(typeof result.result === 'boolean', 'result should be a boolean');
-    assert.ok(typeof result.confidence === 'number', 'confidence should be a number');
-    assert.ok(result.confidence >= 0 && result.confidence <= 1, 'confidence should be between 0 and 1');
+    assert.ok(typeof result.probability === 'number', 'probability should be a number');
+    assert.ok(result.probability >= 0 && result.probability <= 1, 'probability should be between 0 and 1');
 }
 //# sourceMappingURL=classifyDiff.test.js.map
