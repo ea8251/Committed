@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { Ollama } from 'ollama';
 import { 
+  preprocessDiff,
   classifyAsBugFix, 
   classifyAsFeature, 
   classifyAsRefactoring,
@@ -31,6 +32,51 @@ function createMockOllama(response: ClassifierResult): Ollama {
 
 suite('classifyDiff Test Suite', function () {
   this.timeout(60000);
+
+  suite('preprocessDiff', () => {
+    test('returns empty string for empty input', () => {
+      assert.strictEqual(preprocessDiff(''), '');
+    });
+
+    test('removes index metadata while preserving diff body', () => {
+      const rawDiff = [
+        'diff --git a/src/example.ts b/src/example.ts',
+        'index 1234567..89abcde 100644',
+        '--- a/src/example.ts',
+        '+++ b/src/example.ts',
+        '@@ -1,2 +1,2 @@',
+        '-oldValue',
+        '+newValue',
+      ].join('\n');
+
+      const cleaned = preprocessDiff(rawDiff);
+
+      assert.ok(!cleaned.includes('index 1234567..89abcde 100644'));
+      assert.ok(cleaned.includes('diff --git a/src/example.ts b/src/example.ts'));
+      assert.ok(cleaned.includes('-oldValue'));
+      assert.ok(cleaned.includes('+newValue'));
+    });
+
+    test('skips binary markers instead of dropping the entire diff', () => {
+      const rawDiff = [
+        'diff --git a/assets/logo.png b/assets/logo.png',
+        'Binary files a/assets/logo.png and b/assets/logo.png differ',
+        'diff --git a/src/example.ts b/src/example.ts',
+        'index 1234567..89abcde 100644',
+        '--- a/src/example.ts',
+        '+++ b/src/example.ts',
+        '@@ -1,1 +1,1 @@',
+        '-before',
+        '+after',
+      ].join('\n');
+
+      const cleaned = preprocessDiff(rawDiff);
+
+      assert.ok(!cleaned.includes('Binary files a/assets/logo.png and b/assets/logo.png differ'));
+      assert.ok(cleaned.includes('diff --git a/src/example.ts b/src/example.ts'));
+      assert.ok(cleaned.includes('+after'));
+    });
+  });
 
   // Predetermined mock responses for each classifier type
   const mockBugFixTrue: ClassifierResult = { reasoning: 'Mock: detected bug fix', probability: 0.95 };
