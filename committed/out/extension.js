@@ -47,6 +47,12 @@ const ollamaManager_1 = require("./ollamaManager");
 // Activation
 // -----------------------------------------------------------------------
 let ollamaManager;
+async function notifyNewClassification(result) {
+    const action = await vscode.window.showInformationMessage(`Committed classified your current changes as ${result.label} (${result.probability.toFixed(2)}).`, "Open Committed");
+    if (action === "Open Committed") {
+        await vscode.commands.executeCommand("committed.suggestions.focus");
+    }
+}
 function activate(context) {
     // Initialize and start Ollama
     ollamaManager = new ollamaManager_1.OllamaManager();
@@ -80,7 +86,10 @@ function activate(context) {
     }));
     context.subscriptions.push(vscode.window.registerWebviewViewProvider("committed.suggestions", viewProvider));
     // Scheduler: periodically classifies the working-tree diff
-    const scheduler = new scheduler_1.ClassificationScheduler(context, (result) => { viewProvider.publishClassification(result); }, (msg) => { viewProvider.pushLog(msg); });
+    const scheduler = new scheduler_1.ClassificationScheduler(context, (result) => {
+        viewProvider.publishClassification(result);
+        void notifyNewClassification(result);
+    }, (msg) => { viewProvider.pushLog(msg); });
     scheduler.start();
     context.subscriptions.push({ dispose: () => scheduler.dispose() });
     // ------------------------------------------------------------------

@@ -13,6 +13,17 @@ import { OllamaManager } from "./ollamaManager";
 
 let ollamaManager: OllamaManager | undefined;
 
+async function notifyNewClassification(result: FinalClassification): Promise<void> {
+	const action = await vscode.window.showInformationMessage(
+		`Committed classified your current changes as ${result.label} (${result.probability.toFixed(2)}).`,
+		"Open Committed",
+	);
+
+	if (action === "Open Committed") {
+		await vscode.commands.executeCommand("committed.suggestions.focus");
+	}
+}
+
 export function activate(context: vscode.ExtensionContext) {
 
 	// Initialize and start Ollama
@@ -58,7 +69,10 @@ export function activate(context: vscode.ExtensionContext) {
 	// Scheduler: periodically classifies the working-tree diff
 	const scheduler = new ClassificationScheduler(
 		context,
-		(result) => { viewProvider.publishClassification(result); },
+		(result) => {
+			viewProvider.publishClassification(result);
+			void notifyNewClassification(result);
+		},
 		(msg) => { viewProvider.pushLog(msg); },
 	);
 	scheduler.start();
