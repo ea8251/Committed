@@ -1,11 +1,45 @@
 import * as assert from 'assert';
+import { Ollama } from 'ollama';
 import {
   preprocessHunk,
   classifyHunk,
-  HunkClassification,
   HunkRelevanceResult,
   ProjectContext,
 } from '../models/classifyHunk';
+
+function createMockGenerateResponse(response: string) {
+  return {
+    response,
+    model: 'mock',
+    created_at: new Date(),
+    done: true,
+    done_reason: 'stop',
+    total_duration: 0,
+    load_duration: 0,
+    prompt_eval_count: 0,
+    prompt_eval_duration: 0,
+    eval_count: 0,
+    eval_duration: 0,
+  };
+}
+
+async function withMockedOllamaResponse<T>(
+  response: HunkRelevanceResult | string,
+  run: () => Promise<T>
+): Promise<T> {
+  const originalGenerate = Ollama.prototype.generate;
+
+  (Ollama.prototype.generate as unknown as () => Promise<unknown>) = async () =>
+    createMockGenerateResponse(
+      typeof response === 'string' ? response : JSON.stringify(response)
+    );
+
+  try {
+    return await run();
+  } finally {
+    Ollama.prototype.generate = originalGenerate;
+  }
+}
 
 suite('classifyHunk Test Suite', function () {
   this.timeout(60000);
@@ -128,85 +162,195 @@ suite('classifyHunk Test Suite', function () {
     });
   });
 
-  // ── classifyHunk integration tests (require Ollama) ───────────────────
+  // ── classifyHunk unit tests (mocked Ollama responses) ─────────────────
 
   suite('Scenario 1: Bug Fix Hunk', () => {
     test('classified as bug fix', async () => {
-      const result = await classifyHunk(bugFixHunk, 'bug fix', defaultContext);
-      console.log('Bug Fix Hunk → bug fix:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: off-by-one correction fixes broken behavior',
+        relevant: true,
+        confidence: 0.95,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(bugFixHunk, 'bug fix', defaultContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as feature', async () => {
-      const result = await classifyHunk(bugFixHunk, 'feature', defaultContext);
-      console.log('Bug Fix Hunk → feature:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: this hunk fixes existing behavior rather than adding capability',
+        relevant: false,
+        confidence: 0.1,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(bugFixHunk, 'feature', defaultContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as refactor', async () => {
-      const result = await classifyHunk(bugFixHunk, 'refactor', defaultContext);
-      console.log('Bug Fix Hunk → refactor:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: this is a bug fix rather than a structural cleanup',
+        relevant: false,
+        confidence: 0.15,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(bugFixHunk, 'refactor', defaultContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
   });
 
   suite('Scenario 2: Feature Hunk', () => {
     test('classified as bug fix', async () => {
-      const result = await classifyHunk(featureHunk, 'bug fix', featureContext);
-      console.log('Feature Hunk → bug fix:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: new export methods are new capability, not a fix',
+        relevant: false,
+        confidence: 0.1,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(featureHunk, 'bug fix', featureContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as feature', async () => {
-      const result = await classifyHunk(featureHunk, 'feature', featureContext);
-      console.log('Feature Hunk → feature:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: new export functions add user-visible functionality',
+        relevant: true,
+        confidence: 0.97,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(featureHunk, 'feature', featureContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as refactor', async () => {
-      const result = await classifyHunk(featureHunk, 'refactor', featureContext);
-      console.log('Feature Hunk → refactor:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: observable behavior is expanded, so this is not a refactor',
+        relevant: false,
+        confidence: 0.12,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(featureHunk, 'refactor', featureContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
   });
 
   suite('Scenario 3: Refactor Hunk', () => {
     test('classified as bug fix', async () => {
-      const result = await classifyHunk(refactorHunk, 'bug fix', refactorContext);
-      console.log('Refactor Hunk → bug fix:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: callback-to-async conversion preserves behavior instead of fixing a defect',
+        relevant: false,
+        confidence: 0.1,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(refactorHunk, 'bug fix', refactorContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as feature', async () => {
-      const result = await classifyHunk(refactorHunk, 'feature', refactorContext);
-      console.log('Refactor Hunk → feature:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: this keeps the same behavior and is not a feature',
+        relevant: false,
+        confidence: 0.08,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(refactorHunk, 'feature', refactorContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as refactor', async () => {
-      const result = await classifyHunk(refactorHunk, 'refactor', refactorContext);
-      console.log('Refactor Hunk → refactor:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Mock: async/await conversion is a pure structural refactor',
+        relevant: true,
+        confidence: 0.94,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(refactorHunk, 'refactor', refactorContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
   });
 
   suite('Scenario 4: Empty Hunk', () => {
     test('classified as bug fix', async () => {
-      const result = await classifyHunk(emptyHunk, 'bug fix', defaultContext);
-      console.log('Empty Hunk → bug fix:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Empty hunk',
+        relevant: false,
+        confidence: 1,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(emptyHunk, 'bug fix', defaultContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as feature', async () => {
-      const result = await classifyHunk(emptyHunk, 'feature', defaultContext);
-      console.log('Empty Hunk → feature:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Empty hunk',
+        relevant: false,
+        confidence: 1,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(emptyHunk, 'feature', defaultContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
     });
 
     test('classified as refactor', async () => {
-      const result = await classifyHunk(emptyHunk, 'refactor', defaultContext);
-      console.log('Empty Hunk → refactor:', JSON.stringify(result));
-      assertValidHunkResult(result);
+      const expected: HunkRelevanceResult = {
+        reasoning: 'Empty hunk',
+        relevant: false,
+        confidence: 1,
+      };
+
+      const result = await withMockedOllamaResponse(expected, () =>
+        classifyHunk(emptyHunk, 'refactor', defaultContext)
+      );
+
+      assert.deepStrictEqual(result, expected);
+    });
+  });
+
+  suite('parse fallback', () => {
+    test('returns fallback result when Ollama response is not valid JSON', async () => {
+      const result = await withMockedOllamaResponse('not-json', () =>
+        classifyHunk(bugFixHunk, 'bug fix', defaultContext)
+      );
+
+      assert.deepStrictEqual(result, {
+        reasoning: 'Failed to parse LLM output.',
+        relevant: false,
+        confidence: 0,
+      });
     });
   });
 });

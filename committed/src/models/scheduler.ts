@@ -56,15 +56,27 @@ export class ClassificationScheduler {
     }
 
     dispose() {
-        if (this.intervalTimer) clearInterval(this.intervalTimer);
-        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+        if (this.intervalTimer) {
+            clearInterval(this.intervalTimer);
+        }
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
     }
 
-    pause() { this.paused = true; }
-    resume() { this.paused = false; this.lastFingerprint = undefined; }
+    pause() {
+        this.paused = true;
+    }
+
+    resume() {
+        this.paused = false;
+        this.lastFingerprint = undefined;
+    }
 
     private scheduleDebounced(ms: number) {
-        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
         this.debounceTimer = setTimeout(() => {
             this.trigger().catch(() => { });
         }, ms);
@@ -90,7 +102,9 @@ export class ClassificationScheduler {
         const execFileAsync = (file: string, args: string[], cwd: string) =>
             new Promise<string>((resolve) => {
                 execFile(file, args, { cwd }, (err, stdout) => {
-                    if (err) return resolve("");
+                    if (err) {
+                        return resolve("");
+                    }
                     resolve(String(stdout ?? ""));
                 });
             });
@@ -100,7 +114,9 @@ export class ClassificationScheduler {
     }
 
     private async trigger() {
-        if (this.paused) { return; }
+        if (this.paused) {
+            return;
+        }
         if (this.running) {
             this.pending = true;
             return;
