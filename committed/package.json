@@ -25,6 +25,10 @@
       {
         "command": "committed.testGitHub",
         "title": "Committed: Test GitHub & Git Diff"
+      },
+      {
+        "command": "committed.installOllama",
+        "title": "Committed: Install Ollama"
       }
     ],
     "viewsContainers": {

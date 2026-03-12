@@ -8,8 +8,7 @@ const ollama_1 = require("ollama");
 const zod_1 = require("zod");
 const ClassifierSchema = zod_1.z.object({
     reasoning: zod_1.z.string().describe("Step-by-step analysis of the + and - lines before deciding"),
-    result: zod_1.z.boolean().describe("Whether the diff matches this classification"),
-    confidence: zod_1.z.number().min(0).max(1).describe("Confidence score for the classification"),
+    probability: zod_1.z.coerce.number().min(0).max(1).describe("Probability that this diff is of this classification type, between 0 and 1"),
 });
 // removing line numbers and other white space in the gitdiff before sending to the LLM
 function preprocessDiff(rawDiff) {
@@ -22,18 +21,19 @@ function preprocessDiff(rawDiff) {
         if (line.startsWith("index ")) {
             continue;
         }
+        // Skip binary file markers instead of aborting the entire diff
         if (line.startsWith("GIT binary patch") || line.includes("Binary files")) {
-            return "[BINARY FILE CHANGES OMITTED]";
+            continue;
         }
         cleanedLines.push(line);
     }
     return cleanedLines.join("\n").trim();
 }
 const createClassifierPrompt = (category, description, examples) => `
-You are a code classification expert. Determine if the given git diff is PRIMARILY a ${category}.
+You are a code classification expert. Analyze the given git diff and determine how likely it is to be PRIMARILY a ${category}.
 
 SPECIAL CASE - EMPTY INPUT:
-- If the diff is empty, contains no code changes, or is only binary files, return {"reasoning": "Empty or binary diff", "result": false, "confidence": 1.0}
+- If the diff is empty, contains no code changes, or is only binary files, return {"reasoning": "Empty or binary diff", "probability": 0.0}
 
 ${description}
 
@@ -42,14 +42,12 @@ ${examples}
 DECISION PROCESS (Chain of Thought):
 1. Identify what specifically changed (look at the + and - lines).
 2. Write a brief reasoning analyzing if those specific lines match the definition of a ${category}.
-3. Based on your reasoning, set result to TRUE if it is primarily a ${category}, otherwise FALSE.
-4. Set confidence based on how clearly the diff matches.
+3. Set probability between 0 and 1 representing how likely this diff is a ${category}. High values (0.8-1.0) mean it clearly is, low values (0.0-0.2) mean it clearly is not.
 
 Respond ONLY with a JSON object (no markdown, no explanation outside the JSON):
 {
   "reasoning": "<your step-by-step analysis>",
-  "result": true/false,
-  "confidence": <score between 0 and 1>
+  "probability": <score between 0 and 1>
 }
 
 Git diff to analyze:
@@ -58,56 +56,56 @@ const BUG_FIX_PROMPT = createClassifierPrompt("bug fix", `A bug fix corrects BRO
 
 KEY QUESTION: Is this change fixing something that was broken?
 
-Signs this IS a bug fix (return TRUE):
+HIGH probability (0.8-1.0):
 - Off-by-one errors: "i <= length" → "i < length"
 - Null/undefined safety: "x.prop" → "x?.prop" or adding null checks
 - Wrong operators: "=" → "===" in comparisons
 - Boundary condition corrections or fixing type errors
 
-Signs this is NOT a bug fix (return FALSE):
+LOW probability (0.0-0.2):
 - Adding entirely new functions (that's a feature)
 - Restructuring working code (that's refactoring)
 - Empty diff`, `EXAMPLES:
-BUG FIX (TRUE):
+High probability bug fix (probability: 0.95):
 -  for (let i = 0; i <= arr.length; i++) {
 +  for (let i = 0; i < arr.length; i++) {  // Fix off-by-one
 
-NOT A BUG FIX (FALSE - it's a feature):
+Low probability bug fix (probability: 0.1) — this is a feature, not a bug fix:
 +  exportToCSV(): string { return data.join(','); }`);
 const FEATURE_PROMPT = createClassifierPrompt("feature", `A feature adds NEW functionality. The codebase can now do something it COULD NOT do before.
 
 KEY QUESTION: Does this add new capabilities that didn't previously exist?
 
-Signs this IS a feature (return TRUE):
+HIGH probability (0.8-1.0):
 - New functions, methods, or classes being added
 - New API endpoints or routes
 - New parameters enabling new use cases
 
-Signs this is NOT a feature (return FALSE):
+LOW probability (0.0-0.2):
 - Fixing broken code (that's a bug fix)
 - Restructuring without adding capabilities (that's refactoring)`, `EXAMPLES:
-FEATURE (TRUE):
+High probability feature (probability: 0.95):
 +  async searchUsers(query: string): Promise<User[]> {
 +    return this.db.search(query);
 +  }
 
-NOT A FEATURE (FALSE - it's a bug fix):
+Low probability feature (probability: 0.1) — this is a bug fix, not a feature:
 -  for (let i = 0; i <= arr.length; i++) {
 +  for (let i = 0; i < arr.length; i++) {`);
 const REFACTORING_PROMPT = createClassifierPrompt("refactoring", `Refactoring restructures WORKING code without changing observable behavior. Same outputs, different internal structure.
 
 KEY QUESTION: Does the code do the SAME thing, just organized differently?
 
-Signs this IS refactoring (return TRUE):
+HIGH probability (0.8-1.0):
 - Renaming variables/functions for clarity
 - Converting callbacks to async/await (same behavior)
 - Extracting repeated code into shared functions
 - Removing unused code
 
-Signs this is NOT refactoring (return FALSE):
+LOW probability (0.0-0.2):
 - Fixing something that was broken (that's a bug fix)
 - Adding new functionality (that's a feature)`, `EXAMPLES:
-REFACTORING (TRUE):
+High probability refactoring (probability: 0.95):
 -  function getData(id, callback) {
 -    db.query(id, (err, data) => callback(err, data));
 -  }
@@ -115,7 +113,7 @@ REFACTORING (TRUE):
 +    return await db.query(id);
 +  }
 
-NOT REFACTORING (FALSE - it's a bug fix):
+Low probability refactoring (probability: 0.1) — this is a bug fix, not refactoring:
 -  return user.name;
 +  return user?.name ?? 'Unknown';`);
 async function runClassifier(ollama, prompt, rawDiffContent) {
@@ -136,11 +134,10 @@ async function runClassifier(ollama, prompt, rawDiffContent) {
         return ClassifierSchema.parse(parsed);
     }
     catch (error) {
-        console.error("Failed to parse LLM response:", response.response);
+        console.error("Failed to parse LLM response:", response.response, "Error:", error);
         return {
             reasoning: "Failed to parse LLM output.",
-            result: false,
-            confidence: 0,
+            probability: 0,
         };
     }
 }

@@ -28,7 +28,7 @@ const HunkRelevanceSchema = z.object({
     "Whether this hunk is part of the given classification"
   ),
   confidence: z.number().min(0).max(1).describe(
-    "Confidence score for the relevance decision"
+    "Probability score for the relevance decision"
   ),
 });
 
@@ -163,7 +163,7 @@ Hunk to analyze:
  * @param classification - The category to test against
  * @param context     - Project-level context to improve accuracy
  * @param host        - Ollama server URL (defaults to localhost)
- * @returns           - Analysis result with reasoning, relevance boolean, and confidence
+ * @returns           - Analysis result with reasoning, relevance boolean, and probability
  */
 export async function classifyHunk(
   hunk: string,
