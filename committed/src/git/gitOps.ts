@@ -1,4 +1,7 @@
 import { execFile } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 
 /**
@@ -81,7 +84,10 @@ function execGit(args: string[], cwd: string): Promise<string> {
             "git", args,
             { cwd, maxBuffer: 10 * 1024 * 1024 },
             (err, stdout, stderr) => {
-                if (err) { reject(new Error(stderr || err.message)); }
+                if (err) {
+                    const detail = (stderr || stdout || err.message).trim();
+                    reject(new Error(detail));
+                }
                 else { resolve(stdout); }
             },
         );
@@ -89,21 +95,20 @@ function execGit(args: string[], cwd: string): Promise<string> {
 }
 
 /**
- * Pipe a patch string to `git apply --cached` via stdin.
+ * Apply a patch string to the index via a temp file.
+ *
+ * Uses `git apply --cached <file>` instead of piping via stdin
+ * to avoid unreliable stdin delivery on Windows when `git`
+ * resolves to a `.cmd` / batch wrapper.
  */
 function applyPatchToIndex(patch: string, cwd: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const proc = execFile(
-            "git", ["apply", "--cached", "--whitespace=fix", "-"],
-            { cwd },
-            (err, _stdout, stderr) => {
-                if (err) { reject(new Error(`git apply --cached failed: ${stderr || err.message}`)); }
-                else { resolve(); }
-            },
-        );
-        proc.stdin!.write(patch);
-        proc.stdin!.end();
-    });
+    const tmpFile = path.join(os.tmpdir(), `committed-patch-${Date.now()}.patch`);
+    fs.writeFileSync(tmpFile, patch, "utf8");
+    return execGit(["apply", "--cached", "--whitespace=fix", tmpFile], cwd)
+        .then(() => { })
+        .finally(() => {
+            try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+        });
 }
 
 /**
@@ -157,6 +162,13 @@ export async function stageHunks(hunks: ParsedHunk[]): Promise<void> {
             await stageFile(filePath, cwd);
         }
     }
+
+    // Verify something was staged – prevents a confusing "nothing to commit" later
+    const status = await execGit(["diff", "--cached", "--stat"], cwd);
+    if (!status.trim()) {
+        throw new Error("Staging completed but no changes appear in the index. " +
+            "The hunks may not match the current working tree.");
+    }
 }
 
 /**
@@ -170,11 +182,23 @@ export async function unstageAll(): Promise<void> {
 
 /**
  * Create a commit with the given message.
+ *
+ * Writes the message to a temp file and uses `git commit -F <file>`
+ * to avoid both Windows shell-quoting issues with `-m` (parentheses
+ * in conventional-commit subjects) and unreliable stdin piping on
+ * Windows when `git` resolves to a `.cmd` wrapper.
  */
 export async function commitChanges(message: string): Promise<void> {
     const cwd = getWorkspaceRoot();
     if (!cwd) { throw new Error("No workspace folder open"); }
-    await execGit(["commit", "-m", message], cwd);
+
+    const tmpFile = path.join(os.tmpdir(), `committed-msg-${Date.now()}.txt`);
+    try {
+        fs.writeFileSync(tmpFile, message, "utf8");
+        await execGit(["commit", "-F", tmpFile], cwd);
+    } finally {
+        try { fs.unlinkSync(tmpFile); } catch { /* ignore cleanup errors */ }
+    }
 }
 
 /**
